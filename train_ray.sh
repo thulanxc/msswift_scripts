@@ -23,6 +23,13 @@ if [ -f "${SCRIPT_DIR}/.nccl_env" ]; then
 fi
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export NCCL_DEBUG=${NCCL_DEBUG:-INFO}
+
+# H200 + NCCL 2.27+ 常见兼容性修复
+# 如果 NCCL 报 ncclInvalidUsage, 取消下方注释逐个尝试:
+# export NCCL_P2P_DISABLE=1
+# export NCCL_SHM_DISABLE=1
+# export TORCH_NCCL_USE_COMM_NONBLOCKING=0
 
 # 检查 Ray 集群状态
 echo "============================================"
