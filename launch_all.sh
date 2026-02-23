@@ -20,13 +20,14 @@ mkdir -p "${LOG_DIR}"
 
 echo ""
 echo "============================================"
-echo "  启动 6 节点 × 8 GPU 分布式训练"
-echo "  日志: ${LOG_DIR}/node{0..5}.log"
+echo "  启动 ${NNODES} 节点 × ${NPROC_PER_NODE} GPU 分布式训练"
+echo "  总 GPU 数: ${TOTAL_GPUS}"
+echo "  日志: ${LOG_DIR}/node{0..$((NNODES-1))}.log"
 echo "============================================"
 echo ""
 
-# 先启动 node1-5 (后台)
-for i in $(seq 1 5); do
+# 先启动 node1 ~ node(N-1) (后台)
+for i in $(seq 1 $((NNODES - 1))); do
     ip=${CLUSTER_NODES[$i]}
     echo "[启动] node${i} (${ip})"
     ssh "${SSH_USER}@${ip}" \

@@ -17,10 +17,10 @@ source "$ENV_FILE"
 
 echo ""
 echo "============================================"
-echo "  数据 & 环境同步 (node1 ~ node5)"
+echo "  数据 & 环境同步 (node1 ~ node$((NNODES-1)))"
 echo "============================================"
 
-for i in $(seq 1 5); do
+for i in $(seq 1 $((NNODES - 1))); do
     ip=${CLUSTER_NODES[$i]}
     echo ""
     echo ">>> [node${i}] ${ip}"
@@ -47,6 +47,6 @@ done
 
 echo ""
 echo "============================================"
-echo "  全部同步完成!"
+echo "  全部同步完成! (${NNODES} 节点)"
 echo "  下一步: bash launch_all.sh"
 echo "============================================"

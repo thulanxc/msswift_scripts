@@ -209,10 +209,10 @@
 
 <div class="header">
   <h1>Qwen3-4B-Thinking <span>多机 SFT</span> 训练指南</h1>
-  <p>6 节点 × 8 卡 H200 · 48 GPU · ms-swift + DeepSpeed ZeRO-2</p>
+  <p>多节点 × 多卡 H200 · ms-swift + DeepSpeed ZeRO-2 · 节点数灵活可变</p>
   <div class="badge-row">
     <span class="badge blue">ms-swift 3.12.5</span>
-    <span class="badge green">48 GPU</span>
+    <span class="badge green">节点数灵活可变</span>
     <span class="badge yellow">128K 序列长度</span>
   </div>
 </div>
@@ -279,9 +279,9 @@
   <table>
     <tr><th>项目</th><th>配置</th></tr>
     <tr><td>模型</td><td>Qwen3-4B-Thinking-2507 (全参数微调)</td></tr>
-    <tr><td>集群规模</td><td>6 台机器 × 8 卡 H200 = 48 GPU</td></tr>
+    <tr><td>集群规模</td><td>N 台机器 × 8 卡 H200 (节点数在 nodes.conf 中配置)</td></tr>
     <tr><td>并行策略</td><td>DeepSpeed ZeRO-2 (数据并行 + 梯度/优化器分片)</td></tr>
-    <tr><td>Global Batch Size</td><td>1 × 48 × 4 = 192</td></tr>
+    <tr><td>Global Batch Size</td><td>1 × (总GPU数) × grad_accum (默认 4)</td></tr>
     <tr><td>序列长度</td><td>131,072 (128K)</td></tr>
     <tr><td>学习率</td><td>5e-5 → 1e-6 (cosine decay)</td></tr>
     <tr><td>训练轮数</td><td>3 epochs</td></tr>
@@ -353,24 +353,25 @@
 
   <div class="card info">
     <div class="card-title">选哪个 IP？</div>
-    <p class="muted">选所有节点互通的那个网段的 IP。如果 6 台机器的 IP 都是 <code>10.0.0.x</code> 格式，就用这些。
+    <p class="muted">选所有节点互通的那个网段的 IP。如果所有机器的 IP 都是 <code>10.0.0.x</code> 格式，就用这些。
     忽略 <code>127.0.0.1</code>（本地回环）和 <code>172.17.x.x</code>（Docker 网桥）。</p>
   </div>
 
   <h3>编辑 nodes.conf</h3>
 
 <pre>
-<span class="comment"># 把 xxx 替换为实际 IP</span>
-NODE0=<span class="highlight">10.0.0.101</span>
-NODE1=<span class="highlight">10.0.0.102</span>
-NODE2=<span class="highlight">10.0.0.103</span>
-NODE3=<span class="highlight">10.0.0.104</span>
-NODE4=<span class="highlight">10.0.0.105</span>
-NODE5=<span class="highlight">10.0.0.106</span>
+<span class="comment"># 把 xxx 替换为实际 IP, 有几台就写几行</span>
+NODES=(
+    <span class="highlight">10.0.0.101</span>    <span class="comment"># node0 (主节点)</span>
+    <span class="highlight">10.0.0.102</span>    <span class="comment"># node1</span>
+    <span class="highlight">10.0.0.103</span>    <span class="comment"># node2</span>
+    <span class="highlight">...</span>            <span class="comment"># 需要更多节点就继续加行</span>
+)
 
 SSH_USER=<span class="highlight">root</span>
 DATA_PATH=<span class="highlight">/data/redsearcher/data_filtered</span>
 MODEL_PATH=<span class="highlight">Qwen/Qwen3-4B-Thinking-2507</span>
+NPROC_PER_NODE=<span class="highlight">8</span>
 </pre>
 </div>
 
@@ -449,7 +450,7 @@ MODEL_PATH=<span class="highlight">Qwen/Qwen3-4B-Thinking-2507</span>
 <span class="cmd">bash sync_data.sh</span>
 </pre>
 
-  <p>脚本会依次对 node1 ~ node5：</p>
+  <p>脚本会依次对 node1 ~ node(N-1)：</p>
   <ol style="margin:8px 0 8px 20px;">
     <li>rsync 训练脚本 + env.sh 到远程</li>
     <li>rsync 训练数据 (parquet 文件) 到远程</li>
@@ -474,7 +475,7 @@ MODEL_PATH=<span class="highlight">Qwen/Qwen3-4B-Thinking-2507</span>
 
   <p>脚本流程：</p>
   <ol style="margin:8px 0 8px 20px;">
-    <li>SSH 启动 node5 → node4 → ... → node1 (后台)</li>
+    <li>SSH 启动 node(N-1) → ... → node1 (后台)</li>
     <li>在 node0 前台启动训练 (直接看到输出)</li>
     <li>所有节点通过 MASTER_ADDR:MASTER_PORT 建立通信</li>
   </ol>
@@ -594,7 +595,7 @@ dist.destroy_process_group()
     <tr><td><code>--deepspeed zero2</code></td><td>zero2</td><td>梯度+优化器状态分片到所有 GPU，减少跨机通信</td></tr>
     <tr><td><code>--max_length</code></td><td>131072</td><td>128K tokens, 模型原生支持 256K</td></tr>
     <tr><td><code>--per_device_train_batch_size</code></td><td>1</td><td>受 128K 序列长度限制</td></tr>
-    <tr><td><code>--gradient_accumulation_steps</code></td><td>4</td><td>Global BS = 1 × 48 × 4 = 192</td></tr>
+    <tr><td><code>--gradient_accumulation_steps</code></td><td>4</td><td>Global BS = 1 × 总GPU数 × 4</td></tr>
     <tr><td><code>--learning_rate</code></td><td>5e-5</td><td>初始学习率</td></tr>
     <tr><td><code>--lr_scheduler_type</code></td><td>cosine_with_min_lr</td><td>余弦衰减, 最低 1e-6</td></tr>
     <tr><td><code>--warmup_ratio</code></td><td>0.03</td><td>前 3% steps 线性 warmup</td></tr>
@@ -607,7 +608,7 @@ dist.destroy_process_group()
   <div class="card info">
     <div class="card-title">关于 Global Batch Size 的变化</div>
     <p class="muted">原单机脚本: 1 × 8 GPU × 16 = <strong>128</strong><br>
-    多机脚本: 1 × 48 GPU × 4 = <strong>192</strong><br>
+    多机脚本: 1 × 总GPU数 × 4 (如 6 节点 × 8 卡 = 48 GPU → GBS=192)<br>
     如需保持更接近原来的值，可修改 <code>train_multinode.sh</code> 中的
     <code>--gradient_accumulation_steps</code> (设为 3 则 BS=144)。</p>
   </div>

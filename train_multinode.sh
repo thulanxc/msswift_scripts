@@ -1,18 +1,17 @@
 #!/bin/bash
 # ==============================================================================
 # Qwen3-4B-Thinking-2507 多机全参数 SFT
-# 6 台机器 × 8 卡 H200 = 48 GPU
-# Global batch size = 1 × 48 × 4 = 192
+# 节点数和 GPU 数从 env.sh 自动读取
 # ==============================================================================
 #
 # 用法:  bash train_multinode.sh <NODE_RANK>
-#   NODE_RANK: 0-5, 对应 6 台机器
+#   NODE_RANK: 0 ~ (NNODES-1)
 #
 # 前提: 已运行 configure.sh 生成 env.sh
 # ==============================================================================
 set -e
 
-NODE_RANK=${1:?"用法: bash train_multinode.sh <NODE_RANK>  (0-5)"}
+NODE_RANK=${1:?"用法: bash train_multinode.sh <NODE_RANK>  (0 ~ NNODES-1)"}
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/env.sh"
@@ -24,17 +23,25 @@ fi
 
 source "$ENV_FILE"
 
+if [ "$NODE_RANK" -ge "$NNODES" ]; then
+    echo "错误: NODE_RANK=${NODE_RANK} 超出范围 (NNODES=${NNODES}, 有效范围 0~$((NNODES-1)))"
+    exit 1
+fi
+
 export NCCL_SOCKET_IFNAME
 export NCCL_IB_DISABLE
 export NCCL_DEBUG=${NCCL_DEBUG:-INFO}
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-NNODES=6 \
+# 生成 CUDA_VISIBLE_DEVICES: 0,1,...,NPROC_PER_NODE-1
+CUDA_DEVS=$(seq -s, 0 $((NPROC_PER_NODE - 1)))
+
+NNODES=$NNODES \
 NODE_RANK=$NODE_RANK \
 MASTER_ADDR=$MASTER_ADDR \
 MASTER_PORT=$MASTER_PORT \
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=$NPROC_PER_NODE \
+CUDA_VISIBLE_DEVICES=$CUDA_DEVS \
 swift sft \
     --model ${MODEL_PATH} \
     --dataset ${DATA_PATH} \
