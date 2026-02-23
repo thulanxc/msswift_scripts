@@ -149,10 +149,27 @@ else
 fi
 
 if [ -z "$IFNAME" ]; then
+    warn "无法通过 IP 反查接口名, 尝试智能探测..."
+    _DETECT_CMD='ip -br addr show | grep " UP " | grep -v -E "^(lo|docker|veth|br-|reth)" | awk "\$3 ~ /[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/ {print \$1}"'
+    if echo "$LOCAL_IPS" | grep -qw "$NODE0_IP"; then
+        _CANDIDATES=$(eval "$_DETECT_CMD")
+    else
+        _CANDIDATES=$(ssh -o BatchMode=yes "${SSH_USER}@${NODE0_IP}" "$_DETECT_CMD" 2>/dev/null)
+    fi
+    IFNAME=$(echo "$_CANDIDATES" | grep -E '^(eth|ens|eno)' | head -1)
+    [ -z "$IFNAME" ] && IFNAME=$(echo "$_CANDIDATES" | head -1)
+fi
+
+if [ -z "$IFNAME" ]; then
     warn "无法自动检测接口名"
     echo ""
-    info "以下是 node0 的网络接口列表:"
-    ssh -o BatchMode=yes "${SSH_USER}@${NODE0_IP}" "ip -br addr" 2>/dev/null || ip -br addr
+    info "以下是 node0 的网络接口列表 (仅显示有 IP 的):"
+    if echo "$LOCAL_IPS" | grep -qw "$NODE0_IP"; then
+        ip -br addr show | grep ' UP ' | awk '$3 ~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/'
+    else
+        ssh -o BatchMode=yes "${SSH_USER}@${NODE0_IP}" \
+            "ip -br addr show | grep ' UP ' | awk '\$3 ~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/'" 2>/dev/null
+    fi
     echo ""
     read -p "  请输入节点间通信的接口名 (如 eth0, ib0, bond0): " IFNAME
 fi
@@ -254,6 +271,7 @@ MASTER_PORT=${MASTER_PORT}
 
 NCCL_SOCKET_IFNAME="${IFNAME}"
 NCCL_IB_DISABLE=${IB_DISABLE}
+GLOO_SOCKET_IFNAME="${IFNAME}"
 
 DATA_PATH="${DATA_PATH}"
 MODEL_PATH="${MODEL_PATH}"
