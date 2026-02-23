@@ -368,10 +368,21 @@
 </pre>
   <p>也可以打开浏览器访问 Ray Dashboard：<code>http://&lt;HEAD_IP&gt;:8265</code></p>
 
-  <div class="card warn">
-    <div class="card-title">NCCL 自动探测</div>
-    <p class="muted"><code>start_ray.sh</code> 启动时会自动检测网络接口 (NCCL_SOCKET_IFNAME) 和 InfiniBand 状态。
-    如果训练时出现 NCCL 通信错误，可运行 <code>bash check_network.sh</code> 手动排查。</p>
+  <div class="card ok">
+    <div class="card-title">NCCL 自动探测 & 环境变量注入</div>
+    <p class="muted"><code>start_ray.sh</code> 启动时会自动完成：</p>
+    <ul class="muted" style="margin:8px 0 8px 20px; font-size:0.92rem;">
+      <li>探测<strong>有 IP 地址</strong>的网络接口（自动排除 reth 等无 IP 的底层接口）</li>
+      <li>检测 InfiniBand / RoCE 设备</li>
+      <li>将配置保存到 <code>.nccl_env</code> 文件</li>
+    </ul>
+    <p class="muted"><code>train_ray.sh</code> 启动训练时会自动完成：</p>
+    <ul class="muted" style="margin:8px 0 8px 20px; font-size:0.92rem;">
+      <li>读取 <code>.nccl_env</code> 中的 NCCL 配置</li>
+      <li>通过 <code>RAY_RUNTIME_ENV</code> 将环境变量<strong>注入到每个 Ray actor 进程</strong></li>
+    </ul>
+    <p class="muted" style="margin-top:8px;">如果训练时出现 NCCL 通信错误，可运行 <code>bash check_network.sh</code> 手动排查，
+    或编辑 <code>.nccl_env</code> 手动指定接口名后重新运行 <code>train_ray.sh</code>。</p>
   </div>
 </div>
 
@@ -391,12 +402,32 @@ dataset: <span class="highlight">/root/sft_multinode_v1/data_filtered</span>   <
 <pre>
 <span class="cmd">bash train_ray.sh</span>
 </pre>
-  <p>Ray 会自动将任务分发到集群中的所有 GPU。</p>
+  <p>脚本会自动完成以下操作：</p>
+  <ol class="muted" style="margin:8px 0 8px 20px; font-size:0.92rem;">
+    <li>读取 <code>.nccl_env</code> 中的 NCCL 网络配置</li>
+    <li>构建 <code>RAY_RUNTIME_ENV</code>，将 NCCL/GLOO 环境变量注入到每个 Ray actor</li>
+    <li>显示集群状态和 NCCL 配置信息</li>
+    <li>调用 <code>swift sft</code> 启动训练，Ray 自动将任务分发到所有 GPU</li>
+  </ol>
 
   <div class="card info">
     <div class="card-title">关于 device_groups 配置</div>
     <p class="muted"><code>train_config.yaml</code> 中的 <code>nproc_per_node: 8</code> 表示每台机器使用 8 张 GPU。
     如果某台机器的卡数不同，需要修改此值。Ray 会根据集群中实际的 GPU 数量自动确定节点数。</p>
+  </div>
+
+  <div class="card info">
+    <div class="card-title">手动覆盖 NCCL 配置</div>
+    <p class="muted">如果自动探测的网络接口不正确，无需重启 Ray 集群。
+    直接编辑 <code>.nccl_env</code> 修改 <code>NCCL_SOCKET_IFNAME</code> 等变量，
+    然后重新运行 <code>bash train_ray.sh</code> 即可。</p>
+<pre style="margin:8px 0;background:transparent;border:none;padding:0;">
+<span class="comment"># .nccl_env 示例内容</span>
+export NCCL_SOCKET_IFNAME=eth0
+export NCCL_IB_DISABLE=0
+export NCCL_DEBUG=INFO
+export GLOO_SOCKET_IFNAME=eth0
+</pre>
   </div>
 </div>
 
@@ -648,10 +679,28 @@ done</span>
   <h2><span class="num">8</span>常见问题排查</h2>
 
   <div class="card warn">
+    <div class="card-title">问题：NCCL error "Bootstrap : no socket interface found"</div>
+    <p class="muted">这是最常见的 NCCL 错误，表示 NCCL 找不到可用的网络接口。</p>
+    <p class="muted"><strong>原因：</strong><code>NCCL_SOCKET_IFNAME</code> 被设为了一个没有 IP 地址的接口
+    （如 <code>reth0</code>、<code>veth</code> 等底层/虚拟接口），或者环境变量没有传递到训练进程中。</p>
+    <p class="muted"><strong>解决方法：</strong></p>
+    <ol class="muted" style="margin:8px 0 8px 20px; font-size:0.92rem;">
+      <li>运行 <code>bash check_network.sh</code> 查看推荐的接口名</li>
+      <li>编辑 <code>.nccl_env</code>（Ray 方案）或 <code>env.sh</code>（SSH 方案），将
+      <code>NCCL_SOCKET_IFNAME</code> 改为有 IP 的接口（如 <code>eth0</code>）</li>
+      <li>重新运行训练脚本（无需重启 Ray 集群）</li>
+    </ol>
+    <p class="muted" style="margin-top:8px;"><strong>Ray 方案额外说明：</strong>
+    Ray actor 是独立进程，shell 中 <code>export</code> 的变量不会自动传递。
+    <code>train_ray.sh</code> 已内置 <code>RAY_RUNTIME_ENV</code> 注入机制，
+    会自动将 <code>.nccl_env</code> 中的变量注入到每个 Ray actor。
+    如果你手动运行 <code>swift sft</code>，需要自行设置 <code>RAY_RUNTIME_ENV</code>。</p>
+  </div>
+
+  <div class="card warn">
     <div class="card-title">问题：训练启动后卡住不动</div>
     <p class="muted"><strong>原因 1：</strong>NCCL 找不到正确的网络接口。<br>
-    <strong>解决：</strong>检查 <code>env.sh</code> 中的 <code>NCCL_SOCKET_IFNAME</code> 是否正确。
-    运行 <code>bash check_network.sh</code> 在节点上手动确认。</p>
+    <strong>解决：</strong>参考上一条 "Bootstrap : no socket interface found" 的排查方法。</p>
     <p class="muted"><strong>原因 2：</strong>防火墙阻止了 NCCL 端口。<br>
     <strong>解决：</strong>检查 <code>MASTER_PORT</code> (29500) 以及 NCCL 动态端口是否放通。
     临时关闭防火墙测试：<code>systemctl stop firewalld</code></p>
@@ -660,10 +709,18 @@ done</span>
   </div>
 
   <div class="card warn">
-    <div class="card-title">问题：NCCL error / NCCL timeout</div>
+    <div class="card-title">问题：NCCL error / NCCL timeout (其他情况)</div>
     <p class="muted">设置 <code>export NCCL_DEBUG=INFO</code> (已默认开启) 查看详细日志。<br>
     如果报 IB 相关错误但没有 IB 硬件，确认 <code>NCCL_IB_DISABLE=1</code>。<br>
     如果多个网络接口导致混乱，尝试设置 <code>NCCL_SOCKET_IFNAME</code> 为精确的接口名。</p>
+    <p class="muted" style="margin-top:8px;"><strong>NCCL 2.27+ 兼容性问题：</strong>
+    如果报 <code>ncclInvalidUsage</code>，可在 <code>.nccl_env</code> 中追加以下变量后重试：</p>
+<pre style="margin:8px 0;">
+<span class="comment"># 逐个添加尝试, 不需要全部开启</span>
+export NCCL_P2P_DISABLE=1
+export NCCL_SHM_DISABLE=1
+export TORCH_NCCL_USE_COMM_NONBLOCKING=0
+</pre>
   </div>
 
   <div class="card warn">

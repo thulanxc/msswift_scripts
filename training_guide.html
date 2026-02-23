@@ -542,6 +542,15 @@ print(f'flash-attn: {flash_attn.__version__}')
 </div>
 
 <div class="card card-warn">
+  <div class="card-title">NCCL error "Bootstrap : no socket interface found"</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    NCCL 找不到可用的网络接口。运行 <code>bash check_network.sh</code> 查看推荐接口，
+    然后在训练命令前设置：<code>export NCCL_SOCKET_IFNAME=eth0</code>（替换为实际接口名）。
+    如果使用 Ray 方案，编辑 <code>.nccl_env</code> 并用 <code>bash train_ray.sh</code> 启动。
+  </p>
+</div>
+
+<div class="card card-warn">
   <div class="card-title">DDP 报错 "Expected to mark a variable ready only once"</div>
   <p style="color:var(--text2); font-size:0.9rem;">
     添加参数 <code>--gradient_checkpointing_kwargs '{"use_reentrant": false}'</code>，
