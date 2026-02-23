@@ -7,12 +7,14 @@ set -e
 
 pip install ms-swift -U
 pip install deepspeed -U
+pip install "ray[default]" -U
 
 python -c "
-import torch, swift, deepspeed
+import torch, swift, deepspeed, ray
 print(f'PyTorch:    {torch.__version__}')
 print(f'CUDA avail: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')
 print(f'ms-swift:   {swift.__version__}')
 print(f'DeepSpeed:  {deepspeed.__version__}')
+print(f'Ray:        {ray.__version__}')
 print('All OK!')
 "

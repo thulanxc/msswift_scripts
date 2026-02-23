@@ -222,14 +222,24 @@
 <!-- TOC -->
 <div class="toc">
   <h3>目录</h3>
+  <p style="color:var(--accent);font-weight:600;margin-bottom:8px;">两种多机方案，任选其一：</p>
   <ol>
-    <li><a href="#overview">概览与架构</a></li>
-    <li><a href="#files">文件说明</a></li>
-    <li><a href="#step0">第 0 步：编辑 nodes.conf</a></li>
-    <li><a href="#step1">第 1 步：运行 configure.sh</a></li>
-    <li><a href="#step2">第 2 步：安装环境</a></li>
-    <li><a href="#step3">第 3 步：同步数据</a></li>
-    <li><a href="#step4">第 4 步：启动训练</a></li>
+    <li><a href="#overview">概览 — 方案对比</a></li>
+    <li style="color:var(--accent2);font-weight:600;">Ray 方案 (无需节点间 SSH)</li>
+    <ol style="margin:4px 0 4px 0;">
+      <li><a href="#ray-setup">安装环境 & 准备数据</a></li>
+      <li><a href="#ray-cluster">启动 Ray 集群</a></li>
+      <li><a href="#ray-train">启动训练</a></li>
+      <li><a href="#ray-stop">停止 Ray</a></li>
+    </ol>
+    <li style="color:var(--accent2);font-weight:600;">SSH 方案 (传统方式)</li>
+    <ol style="margin:4px 0 4px 0;">
+      <li><a href="#step0">编辑 nodes.conf</a></li>
+      <li><a href="#step1">运行 configure.sh</a></li>
+      <li><a href="#step2">安装环境</a></li>
+      <li><a href="#step3">同步数据</a></li>
+      <li><a href="#step4">启动训练</a></li>
+    </ol>
     <li><a href="#monitoring">监控与日志</a></li>
     <li><a href="#troubleshooting">常见问题排查</a></li>
     <li><a href="#params">训练参数说明</a></li>
@@ -238,11 +248,19 @@
 
 <!-- Overview -->
 <div class="section" id="overview">
-  <h2><span class="num">0</span>概览与架构</h2>
+  <h2><span class="num">0</span>概览 — 方案对比</h2>
 
-  <p>本方案使用 <strong>ms-swift 原生多机模式</strong>：在每台机器上独立运行 <code>swift sft</code>，
-  通过环境变量 <code>NNODES</code>、<code>NODE_RANK</code>、<code>MASTER_ADDR</code>、<code>MASTER_PORT</code> 进行协调，
-  底层由 PyTorch Distributed + NCCL 处理节点间通信。</p>
+  <p>本教程提供两种多机训练方案：</p>
+
+  <table>
+    <tr><th></th><th>Ray 方案 (推荐)</th><th>SSH 方案</th></tr>
+    <tr><td>节点间 SSH</td><td style="color:var(--green);font-weight:600;">不需要</td><td>需要免密 SSH</td></tr>
+    <tr><td>启动方式</td><td>每台机器手动启动 Ray daemon</td><td>node0 一键 SSH 启动所有节点</td></tr>
+    <tr><td>数据同步</td><td>每台机器自行准备</td><td>rsync 自动同步</td></tr>
+    <tr><td>适用场景</td><td>无法配置节点间 SSH 的集群</td><td>可以配置免密 SSH 的集群</td></tr>
+  </table>
+
+  <p style="margin-top:16px;">两种方案的训练超参完全一致（ZeRO-2、128K 序列、cosine LR 等），仅启动方式不同。</p>
 
   <div class="flow">
     <div class="flow-step">
@@ -287,6 +305,114 @@
     <tr><td>训练轮数</td><td>3 epochs</td></tr>
   </table>
 </div>
+
+<!-- ==================== RAY 方案 ==================== -->
+
+<div class="section" id="ray-setup">
+  <h2 style="border-color:var(--accent2);"><span class="num" style="background:var(--accent2);">R1</span>Ray 方案 — 安装环境 & 准备数据</h2>
+
+  <p><strong>在每台机器上分别执行</strong>（登录到每台机器）：</p>
+
+  <h3>安装环境</h3>
+<pre>
+<span class="cmd">bash setup_env.sh</span>
+<span class="comment"># 安装 ms-swift, deepspeed, ray</span>
+</pre>
+
+  <h3>准备数据</h3>
+  <p>每台机器各自下载和过滤数据，确保数据在<strong>所有机器的同一路径</strong>下：</p>
+<pre>
+<span class="cmd">python download_data.py</span>
+<span class="cmd">python filter_data.py</span>
+<span class="comment"># 完成后数据在 data_filtered/ 目录下</span>
+</pre>
+
+  <div class="card info">
+    <div class="card-title">记住数据路径</div>
+    <p class="muted">记下数据的绝对路径（如 <code>/root/sft_multinode_v1/data_filtered</code>），
+    后面需要填入 <code>train_config.yaml</code> 的 <code>dataset</code> 字段。
+    所有机器上的路径必须一致。</p>
+  </div>
+</div>
+
+<div class="section" id="ray-cluster">
+  <h2 style="border-color:var(--accent2);"><span class="num" style="background:var(--accent2);">R2</span>Ray 方案 — 启动 Ray 集群</h2>
+
+  <h3>1. 选一台机器作为 Head 节点</h3>
+<pre>
+<span class="cmd">bash start_ray.sh head</span>
+<span class="comment"># 输出示例:</span>
+<span class="comment">#   [ OK ] Ray Head 已启动!</span>
+<span class="comment">#   Dashboard: http://10.10.17.54:8265</span>
+<span class="comment">#   在每台 worker 机器上执行:</span>
+<span class="comment">#     bash start_ray.sh worker 10.10.17.54</span>
+</pre>
+
+  <h3>2. 在每台 Worker 节点加入集群</h3>
+  <p>将上一步输出的 HEAD_IP 填入：</p>
+<pre>
+<span class="comment"># 在 worker 机器 1 上:</span>
+<span class="cmd">bash start_ray.sh worker 10.10.17.54</span>
+
+<span class="comment"># 在 worker 机器 2 上:</span>
+<span class="cmd">bash start_ray.sh worker 10.10.17.54</span>
+
+<span class="comment"># ... 其他 worker 同理</span>
+</pre>
+
+  <h3>3. 验证集群</h3>
+  <p>在 Head 节点执行：</p>
+<pre>
+<span class="cmd">ray status</span>
+<span class="comment"># 应显示所有节点和 GPU 总数</span>
+</pre>
+  <p>也可以打开浏览器访问 Ray Dashboard：<code>http://&lt;HEAD_IP&gt;:8265</code></p>
+
+  <div class="card warn">
+    <div class="card-title">NCCL 自动探测</div>
+    <p class="muted"><code>start_ray.sh</code> 启动时会自动检测网络接口 (NCCL_SOCKET_IFNAME) 和 InfiniBand 状态。
+    如果训练时出现 NCCL 通信错误，可运行 <code>bash check_network.sh</code> 手动排查。</p>
+  </div>
+</div>
+
+<div class="section" id="ray-train">
+  <h2 style="border-color:var(--accent2);"><span class="num" style="background:var(--accent2);">R3</span>Ray 方案 — 启动训练</h2>
+
+  <h3>1. 编辑训练配置</h3>
+  <p>修改 <code>train_config.yaml</code> 中的 <code>dataset</code> 路径：</p>
+<pre>
+<span class="comment"># train_config.yaml</span>
+model: Qwen/Qwen3-4B-Thinking-2507
+dataset: <span class="highlight">/root/sft_multinode_v1/data_filtered</span>   <span class="comment"># ← 改为实际路径</span>
+</pre>
+
+  <h3>2. 启动训练</h3>
+  <p>在 Head 节点执行：</p>
+<pre>
+<span class="cmd">bash train_ray.sh</span>
+</pre>
+  <p>Ray 会自动将任务分发到集群中的所有 GPU。</p>
+
+  <div class="card info">
+    <div class="card-title">关于 device_groups 配置</div>
+    <p class="muted"><code>train_config.yaml</code> 中的 <code>nproc_per_node: 8</code> 表示每台机器使用 8 张 GPU。
+    如果某台机器的卡数不同，需要修改此值。Ray 会根据集群中实际的 GPU 数量自动确定节点数。</p>
+  </div>
+</div>
+
+<div class="section" id="ray-stop">
+  <h2 style="border-color:var(--accent2);"><span class="num" style="background:var(--accent2);">R4</span>Ray 方案 — 停止 Ray</h2>
+
+  <p>训练结束后，在<strong>每台机器</strong>上执行：</p>
+<pre>
+<span class="cmd">bash stop_ray.sh</span>
+</pre>
+</div>
+
+<div style="border-top:2px solid var(--border);margin:48px 0 32px;"></div>
+<p style="text-align:center;color:var(--text2);font-size:0.95rem;margin-bottom:32px;">
+  ── 以下为 SSH 方案，需要节点间免密 SSH ──
+</p>
 
 <!-- Files -->
 <div class="section" id="files">

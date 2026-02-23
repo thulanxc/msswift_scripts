@@ -1,0 +1,55 @@
+# ==============================================================================
+# Qwen3-4B-Thinking 多机全参数 SFT (Ray 方案)
+# ms-swift 推荐 Ray 搭配 YAML 配置
+# ==============================================================================
+
+# ---- 必须修改 ----
+model: Qwen/Qwen3-4B-Thinking-2507
+dataset: /path/to/data_filtered
+output_dir: ./output/qwen3-4b-thinking-sft-ray
+
+# ---- 训练策略 ----
+train_type: full
+torch_dtype: bfloat16
+bf16: true
+deepspeed: zero2
+
+# ---- 序列长度 ----
+max_length: 131072
+
+# ---- 训练超参 ----
+num_train_epochs: 3
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 4
+learning_rate: 5e-5
+lr_scheduler_type: cosine_with_min_lr
+lr_scheduler_kwargs:
+  min_lr: 1e-6
+warmup_ratio: 0.03
+weight_decay: 0.01
+
+# ---- 显存优化 ----
+gradient_checkpointing: true
+attn_impl: flash_attn
+
+# ---- 保存 ----
+save_strategy: steps
+save_steps: 50
+save_total_limit: 5
+logging_steps: 1
+
+# ---- 数据加载 ----
+dataloader_num_workers: 8
+dataset_num_proc: 8
+use_hf: true
+
+# ---- Ray 配置 ----
+use_ray: true
+device_groups:
+  nproc_per_node: 8
+  default:
+    device: GPU
+    ranks: list(range(0, 8))
+    workers:
+      - default
