@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3-4B 多机 SFT 训练指南</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2e3345;
+    --text: #e0e4f0;
+    --text2: #8b90a5;
+    --accent: #6c8cff;
+    --accent2: #4ecdc4;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --orange: #fb923c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 0;
+  }
+  .header {
+    background: linear-gradient(135deg, #1e2a4a 0%, #0f1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 0 40px;
+    text-align: center;
+  }
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+  .header h1 span { color: var(--accent); }
+  .header p { color: var(--text2); font-size: 1.05rem; }
+  .badge-row { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; padding: 4px 14px; border-radius: 20px;
+    font-size: 0.8rem; font-weight: 600; border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .badge.blue { border-color: var(--accent); color: var(--accent); }
+  .badge.green { border-color: var(--green); color: var(--green); }
+  .badge.yellow { border-color: var(--yellow); color: var(--yellow); }
+  .container { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; }
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 40px;
+  }
+  .toc h3 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 48px; }
+  .section h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+    display: inline-block;
+  }
+  .section h2 .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 0.9rem;
+    margin-right: 10px; vertical-align: middle;
+  }
+  .section h3 { font-size: 1.1rem; margin: 20px 0 10px; color: var(--accent2); }
+
+  p { margin-bottom: 12px; color: var(--text); }
+  .muted { color: var(--text2); }
+  strong { color: #fff; }
+  code {
+    background: var(--surface2);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+    font-size: 0.9em;
+    color: var(--accent2);
+  }
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 12px 0 16px;
+    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  pre .comment { color: #6b7394; }
+  pre .highlight { color: var(--yellow); }
+  pre .cmd { color: var(--green); }
+  pre .flag { color: var(--accent); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+  .card.warn {
+    border-left: 4px solid var(--yellow);
+    background: rgba(251, 191, 36, 0.05);
+  }
+  .card.info {
+    border-left: 4px solid var(--accent);
+    background: rgba(108, 140, 255, 0.05);
+  }
+  .card.ok {
+    border-left: 4px solid var(--green);
+    background: rgba(74, 222, 128, 0.05);
+  }
+  .card .card-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+    font-size: 0.95rem;
+  }
+  .card.warn .card-title { color: var(--yellow); }
+  .card.info .card-title { color: var(--accent); }
+  .card.ok .card-title { color: var(--green); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px;
+    font-size: 0.92rem;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface2);
+    color: var(--text2);
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  td code { background: transparent; padding: 0; color: var(--accent2); }
+
+  .flow {
+    display: flex;
+    gap: 0;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 24px 0;
+  }
+  .flow-step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 130px;
+  }
+  .flow-step .fs-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 0.75rem;
+    font-weight: 700; margin-bottom: 6px;
+  }
+  .flow-step .fs-title { font-weight: 600; font-size: 0.88rem; }
+  .flow-step .fs-file { font-size: 0.78rem; color: var(--text2); margin-top: 2px; }
+  .flow-arrow {
+    font-size: 1.4rem;
+    color: var(--text2);
+    padding: 0 6px;
+  }
+
+  .file-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  @media (max-width: 600px) { .file-grid { grid-template-columns: 1fr; } }
+  .file-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .file-card .fc-name { font-weight: 700; color: var(--accent2); font-size: 0.92rem; }
+  .file-card .fc-desc { font-size: 0.85rem; color: var(--text2); margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Qwen3-4B-Thinking <span>多机 SFT</span> 训练指南</h1>
+  <p>6 节点 × 8 卡 H200 · 48 GPU · ms-swift + DeepSpeed ZeRO-2</p>
+  <div class="badge-row">
+    <span class="badge blue">ms-swift 3.12.5</span>
+    <span class="badge green">48 GPU</span>
+    <span class="badge yellow">128K 序列长度</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- TOC -->
+<div class="toc">
+  <h3>目录</h3>
+  <ol>
+    <li><a href="#overview">概览与架构</a></li>
+    <li><a href="#files">文件说明</a></li>
+    <li><a href="#step0">第 0 步：编辑 nodes.conf</a></li>
+    <li><a href="#step1">第 1 步：运行 configure.sh</a></li>
+    <li><a href="#step2">第 2 步：安装环境</a></li>
+    <li><a href="#step3">第 3 步：同步数据</a></li>
+    <li><a href="#step4">第 4 步：启动训练</a></li>
+    <li><a href="#monitoring">监控与日志</a></li>
+    <li><a href="#troubleshooting">常见问题排查</a></li>
+    <li><a href="#params">训练参数说明</a></li>
+  </ol>
+</div>
+
+<!-- Overview -->
+<div class="section" id="overview">
+  <h2><span class="num">0</span>概览与架构</h2>
+
+  <p>本方案使用 <strong>ms-swift 原生多机模式</strong>：在每台机器上独立运行 <code>swift sft</code>，
+  通过环境变量 <code>NNODES</code>、<code>NODE_RANK</code>、<code>MASTER_ADDR</code>、<code>MASTER_PORT</code> 进行协调，
+  底层由 PyTorch Distributed + NCCL 处理节点间通信。</p>
+
+  <div class="flow">
+    <div class="flow-step">
+      <div class="fs-num">1</div>
+      <div class="fs-title">编辑配置</div>
+      <div class="fs-file">nodes.conf</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="fs-num">2</div>
+      <div class="fs-title">自动探测</div>
+      <div class="fs-file">configure.sh</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="fs-num">3</div>
+      <div class="fs-title">安装环境</div>
+      <div class="fs-file">setup_env.sh</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="fs-num">4</div>
+      <div class="fs-title">同步数据</div>
+      <div class="fs-file">sync_data.sh</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="fs-num">5</div>
+      <div class="fs-title">启动训练</div>
+      <div class="fs-file">launch_all.sh</div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>项目</th><th>配置</th></tr>
+    <tr><td>模型</td><td>Qwen3-4B-Thinking-2507 (全参数微调)</td></tr>
+    <tr><td>集群规模</td><td>6 台机器 × 8 卡 H200 = 48 GPU</td></tr>
+    <tr><td>并行策略</td><td>DeepSpeed ZeRO-2 (数据并行 + 梯度/优化器分片)</td></tr>
+    <tr><td>Global Batch Size</td><td>1 × 48 × 4 = 192</td></tr>
+    <tr><td>序列长度</td><td>131,072 (128K)</td></tr>
+    <tr><td>学习率</td><td>5e-5 → 1e-6 (cosine decay)</td></tr>
+    <tr><td>训练轮数</td><td>3 epochs</td></tr>
+  </table>
+</div>
+
+<!-- Files -->
+<div class="section" id="files">
+  <h2><span class="num">1</span>文件说明</h2>
+
+  <div class="file-grid">
+    <div class="file-card">
+      <div class="fc-name">nodes.conf</div>
+      <div class="fc-desc">唯一需要手动编辑的文件。填入 6 个 IP、SSH 用户名、数据和模型路径。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">configure.sh</div>
+      <div class="fc-desc">自动探测网络接口、IB 状态、端口，配置免密 SSH，生成 env.sh。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">env.sh</div>
+      <div class="fc-desc">由 configure.sh 自动生成的完整配置。所有脚本从这里读取参数。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">setup_env.sh</div>
+      <div class="fc-desc">安装 ms-swift 和 DeepSpeed。每台机器执行一次。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">sync_data.sh</div>
+      <div class="fc-desc">从 node0 将数据、脚本、配置同步到所有 worker 节点。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">launch_all.sh</div>
+      <div class="fc-desc">一键启动所有节点训练。node0 前台运行，其他 SSH 后台启动。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">train_multinode.sh</div>
+      <div class="fc-desc">核心训练脚本。接受 NODE_RANK 参数，由 launch_all.sh 调用。</div>
+    </div>
+    <div class="file-card">
+      <div class="fc-name">check_network.sh</div>
+      <div class="fc-desc">网络诊断工具。手动排查时使用。configure.sh 已内置同等功能。</div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 0 -->
+<div class="section" id="step0">
+  <h2><span class="num">2</span>第 0 步：编辑 nodes.conf</h2>
+
+  <p>这是<strong>唯一需要你手动编辑</strong>的文件。你需要知道每台机器的 IP 地址。</p>
+
+  <h3>如何查看机器 IP</h3>
+  <p>SSH 到每台机器上，运行以下任一命令：</p>
+
+<pre>
+<span class="comment"># 方法 1: 最简单</span>
+<span class="cmd">hostname -I</span>
+<span class="comment"># 输出: 10.0.0.101 172.17.0.1    ← 第一个通常是主 IP</span>
+
+<span class="comment"># 方法 2: 查看所有接口详情</span>
+<span class="cmd">ip -br addr</span>
+<span class="comment"># 输出:</span>
+<span class="comment"># lo       UNKNOWN  127.0.0.1/8</span>
+<span class="comment"># eth0     UP       10.0.0.101/24    ← 以太网接口</span>
+<span class="comment"># ib0      UP       192.168.100.1/24 ← InfiniBand 接口 (如果有)</span>
+<span class="comment"># docker0  DOWN     172.17.0.1/16    ← 忽略</span>
+</pre>
+
+  <div class="card info">
+    <div class="card-title">选哪个 IP？</div>
+    <p class="muted">选所有节点互通的那个网段的 IP。如果 6 台机器的 IP 都是 <code>10.0.0.x</code> 格式，就用这些。
+    忽略 <code>127.0.0.1</code>（本地回环）和 <code>172.17.x.x</code>（Docker 网桥）。</p>
+  </div>
+
+  <h3>编辑 nodes.conf</h3>
+
+<pre>
+<span class="comment"># 把 xxx 替换为实际 IP</span>
+NODE0=<span class="highlight">10.0.0.101</span>
+NODE1=<span class="highlight">10.0.0.102</span>
+NODE2=<span class="highlight">10.0.0.103</span>
+NODE3=<span class="highlight">10.0.0.104</span>
+NODE4=<span class="highlight">10.0.0.105</span>
+NODE5=<span class="highlight">10.0.0.106</span>
+
+SSH_USER=<span class="highlight">root</span>
+DATA_PATH=<span class="highlight">/data/redsearcher/data_filtered</span>
+MODEL_PATH=<span class="highlight">Qwen/Qwen3-4B-Thinking-2507</span>
+</pre>
+</div>
+
+<!-- Step 1 -->
+<div class="section" id="step1">
+  <h2><span class="num">3</span>第 1 步：运行 configure.sh</h2>
+
+  <p>SSH 到你选为 node0 的机器上，进入脚本目录：</p>
+
+<pre>
+<span class="cmd">bash configure.sh</span>
+</pre>
+
+  <p>脚本会自动完成以下操作：</p>
+
+  <table>
+    <tr><th>阶段</th><th>说明</th><th>是否需要交互</th></tr>
+    <tr><td>检查 SSH</td><td>测试到每台节点的免密 SSH</td><td>如果不通，需输入密码</td></tr>
+    <tr><td>探测网络接口</td><td>通过 IP 反查接口名 (如 eth0, ib0)</td><td>极少数情况需手动输入</td></tr>
+    <tr><td>检测 IB</td><td>检查是否有 InfiniBand/RoCE 硬件</td><td>否</td></tr>
+    <tr><td>检测端口</td><td>确认 29500 端口可用</td><td>否</td></tr>
+    <tr><td>生成 env.sh</td><td>写入所有自动探测的参数</td><td>否</td></tr>
+  </table>
+
+  <div class="card ok">
+    <div class="card-title">完成后你会看到</div>
+<pre style="background:transparent;border:none;padding:0;margin:0;color:var(--text);">
+============================================
+  配置完成!
+============================================
+  主节点 (node0):  10.0.0.101
+  通信端口:        29500
+  网络接口:        ib0
+  IB 状态:         启用 (高速)
+  数据路径:        /data/redsearcher/data_filtered
+  模型:            Qwen/Qwen3-4B-Thinking-2507
+</pre>
+  </div>
+
+  <div class="card warn">
+    <div class="card-title">关于免密 SSH</div>
+    <p class="muted">如果集群已经配置了免密 SSH，这一步完全无需交互。
+    如果没有，脚本会自动生成密钥并 <code>ssh-copy-id</code>，
+    每台不通的机器需要输入<strong>一次</strong>密码。这是唯一无法完全避免的交互。</p>
+  </div>
+</div>
+
+<!-- Step 2 -->
+<div class="section" id="step2">
+  <h2><span class="num">4</span>第 2 步：安装环境</h2>
+
+  <p>在 node0 本机先安装：</p>
+
+<pre>
+<span class="cmd">bash setup_env.sh</span>
+</pre>
+
+  <p>这会安装：</p>
+  <ul style="margin:8px 0 8px 20px;">
+    <li><code>ms-swift</code> (最新版)</li>
+    <li><code>deepspeed</code> (最新版)</li>
+  </ul>
+
+  <div class="card info">
+    <div class="card-title">前提条件</div>
+    <p class="muted">每台机器已预装 Python、PyTorch (CUDA)、flash-attn。
+    setup_env.sh 不会重复安装这些。</p>
+  </div>
+</div>
+
+<!-- Step 3 -->
+<div class="section" id="step3">
+  <h2><span class="num">5</span>第 3 步：同步数据</h2>
+
+<pre>
+<span class="cmd">bash sync_data.sh</span>
+</pre>
+
+  <p>脚本会依次对 node1 ~ node5：</p>
+  <ol style="margin:8px 0 8px 20px;">
+    <li>rsync 训练脚本 + env.sh 到远程</li>
+    <li>rsync 训练数据 (parquet 文件) 到远程</li>
+    <li>SSH 远程执行 <code>setup_env.sh</code> 安装 ms-swift</li>
+  </ol>
+
+  <div class="card warn">
+    <div class="card-title">耗时提示</div>
+    <p class="muted">数据同步时间取决于数据量和网络带宽。
+    ~9000 条 parquet 数据通常在几分钟内完成。如果模型是本地路径 (非 HuggingFace 名称)，
+    你需要手动在 sync_data.sh 中添加模型目录的同步。</p>
+  </div>
+</div>
+
+<!-- Step 4 -->
+<div class="section" id="step4">
+  <h2><span class="num">6</span>第 4 步：启动训练</h2>
+
+<pre>
+<span class="cmd">bash launch_all.sh</span>
+</pre>
+
+  <p>脚本流程：</p>
+  <ol style="margin:8px 0 8px 20px;">
+    <li>SSH 启动 node5 → node4 → ... → node1 (后台)</li>
+    <li>在 node0 前台启动训练 (直接看到输出)</li>
+    <li>所有节点通过 MASTER_ADDR:MASTER_PORT 建立通信</li>
+  </ol>
+
+  <div class="card info">
+    <div class="card-title">所有节点必须在短时间内启动</div>
+    <p class="muted">PyTorch Distributed 有超时机制 (默认 30 分钟)。
+    launch_all.sh 会在几秒内启动所有节点，不用担心超时。</p>
+  </div>
+</div>
+
+<!-- Monitoring -->
+<div class="section" id="monitoring">
+  <h2><span class="num">7</span>监控与日志</h2>
+
+  <p>所有日志在 <code>logs/</code> 目录下：</p>
+
+<pre>
+<span class="comment"># node0 日志 (本机)</span>
+<span class="cmd">tail -f logs/node0.log</span>
+
+<span class="comment"># 远程节点日志</span>
+<span class="cmd">ssh root@10.0.0.102 "tail -f /path/to/sft_multinode_v1/logs/node1.log"</span>
+
+<span class="comment"># 查看所有节点 GPU 使用率</span>
+<span class="cmd">for ip in 10.0.0.101 10.0.0.102 10.0.0.103 10.0.0.104 10.0.0.105 10.0.0.106; do
+    echo "=== $ip ===" && ssh root@$ip "nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader"
+done</span>
+</pre>
+
+  <h3>训练进度估算</h3>
+  <table>
+    <tr><th>项目</th><th>值</th></tr>
+    <tr><td>数据量</td><td>~8,937 条</td></tr>
+    <tr><td>Global Batch Size</td><td>192</td></tr>
+    <tr><td>每 epoch steps</td><td>~47 steps</td></tr>
+    <tr><td>3 epochs 总 steps</td><td>~141 steps</td></tr>
+    <tr><td>保存间隔</td><td>每 50 steps</td></tr>
+  </table>
+</div>
+
+<!-- Troubleshooting -->
+<div class="section" id="troubleshooting">
+  <h2><span class="num">8</span>常见问题排查</h2>
+
+  <div class="card warn">
+    <div class="card-title">问题：训练启动后卡住不动</div>
+    <p class="muted"><strong>原因 1：</strong>NCCL 找不到正确的网络接口。<br>
+    <strong>解决：</strong>检查 <code>env.sh</code> 中的 <code>NCCL_SOCKET_IFNAME</code> 是否正确。
+    运行 <code>bash check_network.sh</code> 在节点上手动确认。</p>
+    <p class="muted"><strong>原因 2：</strong>防火墙阻止了 NCCL 端口。<br>
+    <strong>解决：</strong>检查 <code>MASTER_PORT</code> (29500) 以及 NCCL 动态端口是否放通。
+    临时关闭防火墙测试：<code>systemctl stop firewalld</code></p>
+    <p class="muted"><strong>原因 3：</strong>某个节点启动失败。<br>
+    <strong>解决：</strong>检查对应节点的日志 <code>logs/nodeX.log</code></p>
+  </div>
+
+  <div class="card warn">
+    <div class="card-title">问题：NCCL error / NCCL timeout</div>
+    <p class="muted">设置 <code>export NCCL_DEBUG=INFO</code> (已默认开启) 查看详细日志。<br>
+    如果报 IB 相关错误但没有 IB 硬件，确认 <code>NCCL_IB_DISABLE=1</code>。<br>
+    如果多个网络接口导致混乱，尝试设置 <code>NCCL_SOCKET_IFNAME</code> 为精确的接口名。</p>
+  </div>
+
+  <div class="card warn">
+    <div class="card-title">问题：OOM (显存不足)</div>
+    <p class="muted">128K 序列长度 + 全参数微调对显存要求极高。确保：<br>
+    1. DeepSpeed ZeRO-2 已启用 (<code>--deepspeed zero2</code>)<br>
+    2. Gradient checkpointing 已启用 (<code>--gradient_checkpointing true</code>)<br>
+    3. 精度为 bfloat16<br>
+    如果仍然 OOM，考虑降低 <code>--max_length</code></p>
+  </div>
+
+  <div class="card warn">
+    <div class="card-title">问题：数据不一致导致挂起</div>
+    <p class="muted">所有节点上的数据文件必须完全一致。重新运行 <code>bash sync_data.sh</code> 确保同步。<br>
+    如果使用 HuggingFace 名称下载模型，设置 <code>export HF_HOME=/some/shared/path</code> 避免各节点独立下载。</p>
+  </div>
+
+  <h3>诊断命令速查</h3>
+<pre>
+<span class="comment"># 测试节点间连通性</span>
+<span class="cmd">ping -c 3 &lt;其他节点IP&gt;</span>
+
+<span class="comment"># 测试 NCCL 通信 (在两台机器上分别运行)</span>
+<span class="comment"># node0:</span>
+<span class="cmd">NCCL_DEBUG=INFO python -c "
+import torch.distributed as dist
+import os
+os.environ['MASTER_ADDR']='10.0.0.101'
+os.environ['MASTER_PORT']='29500'
+dist.init_process_group('nccl', rank=0, world_size=2)
+t = torch.ones(1).cuda()
+dist.all_reduce(t)
+print('NCCL OK:', t.item())
+dist.destroy_process_group()
+"</span>
+<span class="comment"># node1: 同上但 rank=1</span>
+
+<span class="comment"># 查看 IB 设备状态</span>
+<span class="cmd">ibstat</span>
+<span class="cmd">ibstatus</span>
+
+<span class="comment"># 查看 NCCL 使用的接口</span>
+<span class="comment"># 启动训练时 NCCL_DEBUG=INFO 会打印类似:</span>
+<span class="comment"># NCCL INFO NET/Socket : Using [0]ib0:10.0.0.101<0></span>
+</pre>
+</div>
+
+<!-- Params -->
+<div class="section" id="params">
+  <h2><span class="num">9</span>训练参数说明</h2>
+
+  <table>
+    <tr><th>参数</th><th>值</th><th>说明</th></tr>
+    <tr><td><code>--train_type full</code></td><td>full</td><td>全参数微调</td></tr>
+    <tr><td><code>--deepspeed zero2</code></td><td>zero2</td><td>梯度+优化器状态分片到所有 GPU，减少跨机通信</td></tr>
+    <tr><td><code>--max_length</code></td><td>131072</td><td>128K tokens, 模型原生支持 256K</td></tr>
+    <tr><td><code>--per_device_train_batch_size</code></td><td>1</td><td>受 128K 序列长度限制</td></tr>
+    <tr><td><code>--gradient_accumulation_steps</code></td><td>4</td><td>Global BS = 1 × 48 × 4 = 192</td></tr>
+    <tr><td><code>--learning_rate</code></td><td>5e-5</td><td>初始学习率</td></tr>
+    <tr><td><code>--lr_scheduler_type</code></td><td>cosine_with_min_lr</td><td>余弦衰减, 最低 1e-6</td></tr>
+    <tr><td><code>--warmup_ratio</code></td><td>0.03</td><td>前 3% steps 线性 warmup</td></tr>
+    <tr><td><code>--gradient_checkpointing</code></td><td>true</td><td>以计算换显存</td></tr>
+    <tr><td><code>--attn_impl</code></td><td>flash_attn</td><td>Flash Attention 2, 128K 必需</td></tr>
+    <tr><td><code>--save_steps</code></td><td>50</td><td>每 50 步保存 checkpoint</td></tr>
+    <tr><td><code>--save_total_limit</code></td><td>5</td><td>最多保留 5 个 checkpoint</td></tr>
+  </table>
+
+  <div class="card info">
+    <div class="card-title">关于 Global Batch Size 的变化</div>
+    <p class="muted">原单机脚本: 1 × 8 GPU × 16 = <strong>128</strong><br>
+    多机脚本: 1 × 48 GPU × 4 = <strong>192</strong><br>
+    如需保持更接近原来的值，可修改 <code>train_multinode.sh</code> 中的
+    <code>--gradient_accumulation_steps</code> (设为 3 则 BS=144)。</p>
+  </div>
+</div>
+
+</div><!-- container -->
+</body>
+</html>

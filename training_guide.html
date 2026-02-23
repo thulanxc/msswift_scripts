@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3-4B-Thinking SFT 训练指南</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d2e;
+    --border: #2a2d3e;
+    --accent: #6c8cff;
+    --accent2: #38bdf8;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --code-bg: #111827;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', 'Noto Sans SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 2rem;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.3rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--text2); margin-bottom: 2rem; font-size: 0.95rem; }
+  h2 {
+    font-size: 1.25rem;
+    color: var(--accent2);
+    margin: 2.5rem 0 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  h2 .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+  h3 { font-size: 1.05rem; color: var(--text); margin: 1.2rem 0 0.5rem; }
+  p, li { color: var(--text); margin-bottom: 0.5rem; }
+  ul, ol { padding-left: 1.5rem; }
+  li { margin-bottom: 0.3rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.2rem 1.5rem;
+    margin: 1rem 0;
+  }
+  .card-warn {
+    border-left: 3px solid var(--yellow);
+  }
+  .card-info {
+    border-left: 3px solid var(--accent);
+  }
+  .card-ok {
+    border-left: 3px solid var(--green);
+  }
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+    font-size: 0.95rem;
+  }
+  .card-warn .card-title { color: var(--yellow); }
+  .card-info .card-title { color: var(--accent); }
+  .card-ok .card-title { color: var(--green); }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    margin: 0.8rem 0;
+  }
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.88rem;
+  }
+  p code, li code {
+    background: var(--code-bg);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .comment { color: #6b7280; }
+  .cmd { color: var(--green); }
+  .flag { color: var(--accent); }
+  .val { color: var(--yellow); }
+  .str { color: #f0abfc; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th {
+    background: var(--code-bg);
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    border: 1px solid var(--border);
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  td {
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  td code { font-size: 0.82rem; }
+
+  .tag {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .tag-ok { background: rgba(74,222,128,0.15); color: var(--green); }
+  .tag-req { background: rgba(108,140,255,0.15); color: var(--accent); }
+
+  .overview-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  @media (max-width: 640px) { .overview-grid { grid-template-columns: 1fr; } }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+  }
+  .flow-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .flow-arrow { color: var(--text2); font-size: 1.2rem; }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 0.82rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Qwen3-4B-Thinking-2507 SFT 训练指南</h1>
+<p class="subtitle">8 × H200 全参数微调 &mdash; 基于 ms-swift 框架</p>
+
+<!-- ========== 概览 ========== -->
+<h2>概览</h2>
+
+<div class="flow">
+  <div class="flow-item">安装环境</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-item">上传数据</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-item">启动训练</div>
+  <span class="flow-arrow">&rarr;</span>
+  <div class="flow-item">推理验证</div>
+</div>
+
+<div class="overview-grid">
+  <div class="card">
+    <div class="card-title" style="color:var(--accent2)">模型</div>
+    <p><code>Qwen/Qwen3-4B-Thinking-2507</code></p>
+    <p style="color:var(--text2); font-size:0.85rem;">4B 参数 &middot; bfloat16 &middot; 原生支持 256K 上下文</p>
+  </div>
+  <div class="card">
+    <div class="card-title" style="color:var(--accent2)">数据</div>
+    <p><code>data_filtered/</code> (5 个 parquet 文件)</p>
+    <p style="color:var(--text2); font-size:0.85rem;">8,937 条 &middot; 平均 128 轮对话 &middot; 中/英文</p>
+  </div>
+  <div class="card">
+    <div class="card-title" style="color:var(--accent2)">硬件</div>
+    <p>8 × NVIDIA H200 (141 GB HBM3e)</p>
+    <p style="color:var(--text2); font-size:0.85rem;">DeepSpeed ZeRO-3 + Flash Attention 2</p>
+  </div>
+  <div class="card">
+    <div class="card-title" style="color:var(--accent2)">训练策略</div>
+    <p>全参数 SFT &middot; 全局 batch = 128</p>
+    <p style="color:var(--text2); font-size:0.85rem;">LR 5e-5 &rarr; 1e-6 余弦衰减 &middot; 128K max_length</p>
+  </div>
+</div>
+
+
+<!-- ========== Step 1 ========== -->
+<h2><span class="step-num">1</span> 安装环境</h2>
+
+<p>在 H200 服务器上执行以下命令（或保存为 <code>setup_env.sh</code> 后 <code>bash setup_env.sh</code>）：</p>
+
+<pre><code><span class="comment"># 创建 conda 环境</span>
+<span class="cmd">conda create</span> <span class="flag">-n</span> <span class="val">redsearcher_sft</span> <span class="flag">python=3.11</span> <span class="flag">-y</span>
+<span class="cmd">conda activate</span> <span class="val">redsearcher_sft</span>
+
+<span class="comment"># 安装 PyTorch（先用 nvidia-smi 确认 CUDA 版本，选对应的 whl）</span>
+<span class="cmd">pip install</span> torch torchvision torchaudio <span class="flag">--index-url</span> <span class="str">https://download.pytorch.org/whl/cu124</span>
+
+<span class="comment"># 安装 ms-swift (当前稳定版 3.12.5) 和 DeepSpeed</span>
+<span class="cmd">pip install</span> ms-swift <span class="flag">-U</span>
+<span class="cmd">pip install</span> deepspeed <span class="flag">-U</span>
+
+<span class="comment"># 安装 Flash Attention（128K 长序列训练必需）</span>
+<span class="cmd">pip install</span> flash-attn <span class="flag">--no-build-isolation</span></code></pre>
+
+<h3>验证安装</h3>
+<pre><code><span class="cmd">python</span> <span class="flag">-c</span> <span class="str">"
+import torch, swift, deepspeed, flash_attn
+print(f'PyTorch:    {torch.__version__}')
+print(f'CUDA avail: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')
+print(f'ms-swift:   {swift.__version__}')
+print(f'DeepSpeed:  {deepspeed.__version__}')
+print(f'flash-attn: {flash_attn.__version__}')
+"</span></code></pre>
+
+<div class="card card-info">
+  <div class="card-title">依赖一览</div>
+  <table>
+    <tr><th>包</th><th>版本要求</th><th>用途</th></tr>
+    <tr><td><code>ms-swift</code></td><td>&ge; 3.12</td><td>训练框架</td></tr>
+    <tr><td><code>deepspeed</code></td><td>最新</td><td>ZeRO-2 多卡分布式</td></tr>
+    <tr><td><code>flash-attn</code></td><td>&ge; 2.5</td><td>128K 长序列 attention 加速</td></tr>
+    <tr><td><code>torch</code></td><td>&ge; 2.1</td><td>基础框架</td></tr>
+    <tr><td><code>transformers</code></td><td>&ge; 4.44 (ms-swift 自动安装)</td><td>模型加载</td></tr>
+  </table>
+</div>
+
+
+<!-- ========== Step 2 ========== -->
+<h2><span class="step-num">2</span> 上传数据</h2>
+
+<p>将 <code>data_filtered/</code> 文件夹上传至 H200 服务器的某个路径，例如：</p>
+<pre><code>/data/redsearcher/data_filtered/
+├── train-00000-of-00005.parquet
+├── train-00001-of-00005.parquet
+├── train-00002-of-00005.parquet
+├── train-00003-of-00005.parquet
+└── train-00004-of-00005.parquet</code></pre>
+
+<div class="card card-ok">
+  <div class="card-title">数据格式已兼容，无需预处理</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    数据采用标准 messages 格式（与 REDSearcher 发布的 HuggingFace 数据集一致）。
+    ms-swift 的 <code>AutoPreprocessor</code> 会自动处理：
+  </p>
+  <ul style="color:var(--text2); font-size:0.9rem;">
+    <li><code>messages</code> &rarr; 标准 <code>[{role, content}]</code> 对话</li>
+    <li><code>system_prompt</code> &rarr; 自动映射为 system 消息</li>
+    <li><code>meta</code> &rarr; 未使用列，自动忽略</li>
+  </ul>
+</div>
+
+
+<!-- ========== Step 3 ========== -->
+<h2><span class="step-num">3</span> 启动训练</h2>
+
+<p>将以下内容保存为 <code>train_sft.sh</code>，<strong>修改其中两个路径</strong>后执行：</p>
+
+<pre><code><span class="comment">#!/bin/bash</span>
+<span class="comment"># ============================================================</span>
+<span class="comment"># Qwen3-4B-Thinking-2507 Full-Parameter SFT</span>
+<span class="comment"># 8×H200  |  global batch=128  |  128K context  |  cosine LR</span>
+<span class="comment"># ============================================================</span>
+
+<span class="comment"># ---- 修改以下两个路径 ----</span>
+<span class="val">MODEL_PATH</span>=<span class="str">"Qwen/Qwen3-4B-Thinking-2507"</span>        <span class="comment"># 或已下载到本地的路径</span>
+<span class="val">DATA_PATH</span>=<span class="str">"/data/redsearcher/data_filtered"</span>      <span class="comment"># parquet 文件夹路径</span>
+<span class="val">OUTPUT_DIR</span>=<span class="str">"./output/qwen3-4b-thinking-sft"</span>
+
+<span class="val">NPROC_PER_NODE</span>=8 \
+<span class="val">CUDA_VISIBLE_DEVICES</span>=0,1,2,3,4,5,6,7 \
+<span class="cmd">swift sft</span> \
+    <span class="flag">--model</span> <span class="val">${MODEL_PATH}</span> \
+    <span class="flag">--dataset</span> <span class="val">${DATA_PATH}</span> \
+    <span class="flag">--train_type</span> <span class="val">full</span> \
+    <span class="flag">--torch_dtype</span> <span class="val">bfloat16</span> \
+    <span class="flag">--bf16</span> <span class="val">true</span> \
+    <span class="flag">--max_length</span> <span class="val">131072</span> \
+    <span class="flag">--num_train_epochs</span> <span class="val">3</span> \
+    <span class="flag">--per_device_train_batch_size</span> <span class="val">1</span> \
+    <span class="flag">--per_device_eval_batch_size</span> <span class="val">1</span> \
+    <span class="flag">--gradient_accumulation_steps</span> <span class="val">16</span> \
+    <span class="flag">--learning_rate</span> <span class="val">5e-5</span> \
+    <span class="flag">--lr_scheduler_type</span> <span class="val">cosine_with_min_lr</span> \
+    <span class="flag">--lr_scheduler_kwargs</span> <span class="str">'{"min_lr": 1e-6}'</span> \
+    <span class="flag">--warmup_ratio</span> <span class="val">0.03</span> \
+    <span class="flag">--weight_decay</span> <span class="val">0.01</span> \
+    <span class="flag">--gradient_checkpointing</span> <span class="val">true</span> \
+    <span class="flag">--attn_impl</span> <span class="val">flash_attn</span> \
+    <span class="flag">--deepspeed</span> <span class="val">zero3</span> \
+    <span class="flag">--save_strategy</span> <span class="val">steps</span> \
+    <span class="flag">--save_steps</span> <span class="val">50</span> \
+    <span class="flag">--save_total_limit</span> <span class="val">5</span> \
+    <span class="flag">--logging_steps</span> <span class="val">1</span> \
+    <span class="flag">--output_dir</span> <span class="val">${OUTPUT_DIR}</span> \
+    <span class="flag">--dataloader_num_workers</span> <span class="val">8</span> \
+    <span class="flag">--dataset_num_proc</span> <span class="val">8</span> \
+    <span class="flag">--use_hf</span> <span class="val">true</span></code></pre>
+
+<p>执行：</p>
+<pre><code><span class="cmd">conda activate</span> <span class="val">redsearcher_sft</span>
+<span class="cmd">bash</span> train_sft.sh</code></pre>
+
+
+<!-- ========== 参数详解 ========== -->
+<h2>参数详解</h2>
+
+<table>
+  <tr>
+    <th>参数</th><th>值</th><th>说明</th>
+  </tr>
+  <tr>
+    <td><code>--train_type full</code></td>
+    <td><code>full</code></td>
+    <td>全参数微调（非 LoRA）。4B 模型 + 8×H200 显存充裕。</td>
+  </tr>
+  <tr>
+    <td><code>--per_device_train_batch_size</code></td>
+    <td><code>1</code></td>
+    <td>每卡 batch size。128K 序列长度下<strong>必须为 1</strong>。</td>
+  </tr>
+  <tr>
+    <td><code>--gradient_accumulation_steps</code></td>
+    <td><code>16</code></td>
+    <td>梯度累积。全局 batch = 1 &times; 8 &times; 16 = <strong>128</strong>。</td>
+  </tr>
+  <tr>
+    <td><code>--learning_rate</code></td>
+    <td><code>5e-5</code></td>
+    <td>初始学习率。</td>
+  </tr>
+  <tr>
+    <td><code>--lr_scheduler_type</code></td>
+    <td><code>cosine_with_min_lr</code></td>
+    <td>余弦衰减（带最小学习率下界）。</td>
+  </tr>
+  <tr>
+    <td><code>--lr_scheduler_kwargs</code></td>
+    <td><code>{"min_lr": 1e-6}</code></td>
+    <td>学习率衰减到 <strong>1e-6</strong> 后保持不变。</td>
+  </tr>
+  <tr>
+    <td><code>--warmup_ratio</code></td>
+    <td><code>0.03</code></td>
+    <td>前 3% 步数线性 warmup。约 6 步（3 epochs 共约 210 步）。</td>
+  </tr>
+  <tr>
+    <td><code>--max_length</code></td>
+    <td><code>131072</code></td>
+    <td>128K tokens。模型原生 max_position_embeddings=262144，无需 rope_scaling。</td>
+  </tr>
+  <tr>
+    <td><code>--num_train_epochs</code></td>
+    <td><code>3</code></td>
+    <td>训练轮数。8937 条数据 / 128 batch &asymp; 70 steps/epoch，3 epochs &asymp; 210 steps。</td>
+  </tr>
+  <tr>
+    <td><code>--gradient_checkpointing</code></td>
+    <td><code>true</code></td>
+    <td>梯度检查点。大幅降低激活值显存占用，128K 训练必需。</td>
+  </tr>
+  <tr>
+    <td><code>--attn_impl flash_attn</code></td>
+    <td><code>flash_attn</code></td>
+    <td>启用 Flash Attention 2。将 attention 显存从 O(n&sup2;) 降至 O(n)，128K 训练必需。</td>
+  </tr>
+  <tr>
+    <td><code>--deepspeed zero3</code></td>
+    <td><code>zero3</code></td>
+    <td>ZeRO Stage 3：模型参数 + 优化器状态 + 梯度全部分片到 8 张卡。</td>
+  </tr>
+  <tr>
+    <td><code>--torch_dtype bfloat16</code></td>
+    <td><code>bfloat16</code></td>
+    <td>模型权重精度。H200 对 bf16 有原生硬件加速。</td>
+  </tr>
+  <tr>
+    <td><code>--use_hf true</code></td>
+    <td><code>true</code></td>
+    <td>从 HuggingFace 下载模型。国内服务器可去掉此项改用 ModelScope。</td>
+  </tr>
+  <tr>
+    <td><code>--split_dataset_ratio</code></td>
+    <td><code>0.0</code> (默认)</td>
+    <td>不划分验证集，全部数据用于训练。</td>
+  </tr>
+  <tr>
+    <td><code>--dataset_num_proc</code></td>
+    <td><code>8</code></td>
+    <td>数据预处理并行进程数。纯文本模型建议调高加速 tokenization。</td>
+  </tr>
+  <tr>
+    <td><code>--save_steps</code></td>
+    <td><code>50</code></td>
+    <td>每 50 步保存 checkpoint。3 epochs 总共约 210 步，会保存约 4 次。</td>
+  </tr>
+  <tr>
+    <td><code>--save_total_limit</code></td>
+    <td><code>5</code></td>
+    <td>最多保留 5 个 checkpoint，防止磁盘爆满。</td>
+  </tr>
+</table>
+
+<div class="card card-info">
+  <div class="card-title">关于 Thinking 模型的特殊处理</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    ms-swift 会自动识别 Qwen3-4B-Thinking 为 thinking 模型。使用默认 <code>loss_scale='default'</code> 时，
+    <strong>所有轮次的 assistant 回复（包括 &lt;think&gt; 内容）都会参与 loss 计算</strong>，历史思维链内容不会被移除。
+    这正是训练 deep search agent 所需要的行为。
+  </p>
+</div>
+
+<div class="card card-ok">
+  <div class="card-title">Agent 场景 Loss 计算（tool_response 已正确排除）</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    本数据中 tool_response 内容位于 <code>role: "user"</code> 消息中。
+    ms-swift 的 <code>loss_scale='default'</code> <strong>天然排除所有 user/system 角色的消息</strong>，
+    因此 tool_response 不会参与梯度计算，无需额外配置。
+  </p>
+  <table style="margin-top:0.8rem;">
+    <tr><th>role</th><th>内容</th><th>参与 Loss？</th></tr>
+    <tr><td><code>user</code></td><td>用户问题 / <code>&lt;tool_response&gt;</code></td><td style="color:var(--red); font-weight:600;">否</td></tr>
+    <tr><td><code>assistant</code></td><td><code>&lt;think&gt;</code> + <code>&lt;tool_call&gt;</code> + 正文</td><td style="color:var(--green); font-weight:600;">是</td></tr>
+    <tr><td><code>system</code></td><td>system_prompt（deep search assistant）</td><td style="color:var(--red); font-weight:600;">否</td></tr>
+  </table>
+</div>
+
+
+<!-- ========== 显存预估 ========== -->
+<h2>显存预估</h2>
+
+<table>
+  <tr><th>组件</th><th>单卡占用 (ZeRO-3)</th><th>说明</th></tr>
+  <tr>
+    <td>模型权重 (bf16)</td>
+    <td>~1 GB</td>
+    <td>4B params &times; 2 bytes / 8 卡，ZeRO-3 分片到所有卡</td>
+  </tr>
+  <tr>
+    <td>优化器状态 (AdamW)</td>
+    <td>~4 GB</td>
+    <td>fp32 master weights + 一/二阶矩，ZeRO-3 分片到 8 卡</td>
+  </tr>
+  <tr>
+    <td>梯度</td>
+    <td>~1 GB</td>
+    <td>ZeRO-3 分片到 8 卡</td>
+  </tr>
+  <tr>
+    <td>激活值 (128K seq)</td>
+    <td>~30-80 GB</td>
+    <td>Flash Attention + gradient checkpointing 大幅减少，视实际序列长度波动</td>
+  </tr>
+  <tr>
+    <td style="font-weight:600;">总计</td>
+    <td style="font-weight:600;">~36-86 GB</td>
+    <td>H200 单卡 141 GB，留有充足余量</td>
+  </tr>
+</table>
+
+
+<!-- ========== Step 4 ========== -->
+<h2><span class="step-num">4</span> 推理验证</h2>
+
+<p>训练完成后，使用最终 checkpoint 进行交互式推理：</p>
+
+<pre><code><span class="val">CUDA_VISIBLE_DEVICES</span>=0 \
+<span class="cmd">swift infer</span> \
+    <span class="flag">--model</span> <span class="str">./output/qwen3-4b-thinking-sft/checkpoint-210</span> \
+    <span class="flag">--infer_backend</span> <span class="val">transformers</span> \
+    <span class="flag">--stream</span> <span class="val">true</span> \
+    <span class="flag">--temperature</span> <span class="val">0</span> \
+    <span class="flag">--max_new_tokens</span> <span class="val">4096</span></code></pre>
+
+<div class="card card-info">
+  <div class="card-title">全参数训练推理说明</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    全参数训练（非 LoRA）的 checkpoint 是完整模型权重，
+    推理时使用 <code>--model</code>（而非 <code>--adapters</code>）指向 checkpoint 目录。
+    ms-swift 会从 checkpoint 中的 <code>args.json</code> 自动读取训练时的参数配置。
+  </p>
+</div>
+
+
+<!-- ========== 故障排除 ========== -->
+<h2>常见问题与故障排除</h2>
+
+<div class="card card-warn">
+  <div class="card-title">OOM（显存不足）</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    脚本已使用 ZeRO-3（参数+梯度+优化器全分片），如仍 OOM 可考虑：
+    降低 <code>--max_length</code>（如 65536）；或降低 <code>--per_device_train_batch_size</code>。
+  </p>
+</div>
+
+<div class="card card-warn">
+  <div class="card-title">国内下载慢 / 网络问题</div>
+  <p style="color:var(--text2); font-size:0.9rem;"><strong>方案 A：</strong>去掉 <code>--use_hf true</code>，默认走 ModelScope 下载（国内镜像更快）。</p>
+  <p style="color:var(--text2); font-size:0.9rem;"><strong>方案 B：</strong>提前下载模型到本地：</p>
+  <pre style="margin:0.5rem 0;"><code><span class="cmd">huggingface-cli download</span> Qwen/Qwen3-4B-Thinking-2507 <span class="flag">--local-dir</span> <span class="str">/data/models/Qwen3-4B-Thinking-2507</span></code></pre>
+  <p style="color:var(--text2); font-size:0.9rem;">然后把 <code>MODEL_PATH</code> 改为本地路径。</p>
+</div>
+
+<div class="card card-warn">
+  <div class="card-title">DDP 报错 "Expected to mark a variable ready only once"</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    添加参数 <code>--gradient_checkpointing_kwargs '{"use_reentrant": false}'</code>，
+    或者直接使用 DeepSpeed（脚本已使用，通常不会出现此问题）。
+  </p>
+</div>
+
+<div class="card card-warn">
+  <div class="card-title">数据预处理卡住</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    128K 长序列 tokenization 较慢，8937 条数据预处理可能需要 10-30 分钟。
+    如需跳过重复预处理，可加 <code>--load_from_cache_file true</code>。
+  </p>
+</div>
+
+<div class="card card-warn">
+  <div class="card-title">flash-attn 安装失败</div>
+  <p style="color:var(--text2); font-size:0.9rem;">
+    确保安装了与 PyTorch 版本匹配的 CUDA toolkit。可尝试：
+    <code>pip install flash-attn --no-build-isolation</code>，
+    或从 <a href="https://github.com/Dao-AILab/flash-attention/releases">GitHub Releases</a> 下载预编译 wheel。
+  </p>
+</div>
+
+
+<!-- ========== 可选优化 ========== -->
+<h2>可选优化</h2>
+
+<h3>Packing（序列打包加速）</h3>
+<p>将多个短序列打包到一条 128K 序列中，提高 GPU 利用率。额外添加以下参数：</p>
+<pre><code>    <span class="flag">--packing</span> <span class="val">true</span></code></pre>
+<p style="color:var(--text2); font-size:0.9rem;">
+  适合数据长度差异大的场景。开启后训练更快、显存占用更稳定，但预处理时间会增加。
+</p>
+
+<h3>断点续训</h3>
+<p>如果训练中断，可以从最近的 checkpoint 恢复：</p>
+<pre><code>    <span class="flag">--resume_from_checkpoint</span> <span class="str">./output/qwen3-4b-thinking-sft/checkpoint-100</span></code></pre>
+
+<h3>TensorBoard 监控</h3>
+<p>训练日志默认写入 <code>output_dir/runs/</code>，启动 TensorBoard 查看 loss 曲线：</p>
+<pre><code><span class="cmd">tensorboard</span> <span class="flag">--logdir</span> <span class="str">./output/qwen3-4b-thinking-sft</span> <span class="flag">--port</span> <span class="val">6006</span></code></pre>
+
+
+<!-- ========== 完整文件清单 ========== -->
+<h2>文件清单</h2>
+
+<table>
+  <tr><th>文件</th><th>用途</th><th>需要修改</th></tr>
+  <tr>
+    <td><code>setup_env.sh</code></td>
+    <td>环境安装脚本</td>
+    <td>根据 CUDA 版本选择 PyTorch whl</td>
+  </tr>
+  <tr>
+    <td><code>train_sft.sh</code></td>
+    <td>训练启动脚本</td>
+    <td><strong>必须修改</strong> <code>DATA_PATH</code>；可选修改 <code>MODEL_PATH</code></td>
+  </tr>
+  <tr>
+    <td><code>data_filtered/</code></td>
+    <td>训练数据（5 个 parquet）</td>
+    <td>上传至服务器即可</td>
+  </tr>
+</table>
+
+
+<!-- ========== 核心参数速查 ========== -->
+<h2>核心参数速查卡</h2>
+<div class="card" style="font-family: monospace; font-size: 0.88rem; line-height: 2;">
+  <table style="border:none;">
+    <tr><td style="border:none; color:var(--text2); width:45%;">Global Batch Size</td><td style="border:none; font-weight:600;">1 &times; 8 &times; 16 = 128</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Learning Rate</td><td style="border:none; font-weight:600;">5e-5 &rarr; 1e-6 (cosine)</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Max Sequence Length</td><td style="border:none; font-weight:600;">131,072 tokens (128K)</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Epochs</td><td style="border:none; font-weight:600;">3 (~210 steps)</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Warmup</td><td style="border:none; font-weight:600;">3% (~6 steps)</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Precision</td><td style="border:none; font-weight:600;">bfloat16</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Distributed Strategy</td><td style="border:none; font-weight:600;">DeepSpeed ZeRO-3</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Attention</td><td style="border:none; font-weight:600;">Flash Attention 2</td></tr>
+    <tr><td style="border:none; color:var(--text2);">Weight Decay</td><td style="border:none; font-weight:600;">0.01</td></tr>
+  </table>
+</div>
+
+<footer>
+  Qwen3-4B-Thinking-2507 SFT Training Guide &middot; ms-swift 3.12.x &middot; Generated 2026-02-22
+</footer>
+
+</body>
+</html>
