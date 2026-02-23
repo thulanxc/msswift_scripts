@@ -32,6 +32,7 @@ weight_decay: 0.01
 # ---- 显存优化 ----
 gradient_checkpointing: true
 attn_impl: flash_attn
+packing: true
 
 # ---- 保存 ----
 save_strategy: steps

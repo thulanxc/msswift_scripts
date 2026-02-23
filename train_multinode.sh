@@ -61,6 +61,7 @@ swift sft \
     --weight_decay 0.01 \
     --gradient_checkpointing true \
     --attn_impl flash_attn \
+    --packing true \
     --deepspeed zero2 \
     --save_strategy steps \
     --save_steps 50 \
