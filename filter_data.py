@@ -13,8 +13,8 @@ import pyarrow.parquet as pq
 #   {"search", "visit", "PythonInterpreter", "google_scholar"}   -> 9956 条
 #   {"search", "visit", "PythonInterpreter", "google_scholar", "google_maps"} -> 10001 条 (全部)
 KEEP_TOOLS = {"search", "visit"}
-DATA_DIR = r"C:\Ring_base\RedSearcher\REDSearcher_SFT_10K\data"
-OUT_DIR = r"C:\Ring_base\RedSearcher\REDSearcher_SFT_10K\data_filtered"
+DATA_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data"
+OUT_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data_filtered"
 # ================================================
 
 os.makedirs(OUT_DIR, exist_ok=True)
