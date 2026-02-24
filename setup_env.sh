@@ -8,6 +8,7 @@ set -e
 pip install ms-swift -U
 pip install deepspeed -U
 pip install "ray[default]" -U
+pip install --upgrade datasets
 
 python -c "
 import torch, swift, deepspeed, ray
