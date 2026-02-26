@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 #   {"search", "visit", "google_maps"}                           -> 8956 条
 #   {"search", "visit", "PythonInterpreter", "google_scholar"}   -> 9956 条
 #   {"search", "visit", "PythonInterpreter", "google_scholar", "google_maps"} -> 10001 条 (全部)
-KEEP_TOOLS = {"search", "visit"}
+KEEP_TOOLS = {"search", "visit", "PythonInterpreter", "google_scholar"}
 DATA_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data"
 OUT_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data_filtered"
 # ================================================
