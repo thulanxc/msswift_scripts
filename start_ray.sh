@@ -88,7 +88,7 @@ info "本机 GPU 数: ${NUM_GPUS}"
 
 if [ "$MODE" = "head" ]; then
     info "启动 Ray Head 节点..."
-    ray start --head \
+    RAY_memory_monitor_refresh_ms=0 ray start --head \
         --port=${RAY_PORT} \
         --dashboard-host=0.0.0.0 \
         --dashboard-port=${DASHBOARD_PORT} \
@@ -110,7 +110,7 @@ if [ "$MODE" = "head" ]; then
 elif [ "$MODE" = "worker" ]; then
     HEAD_IP=${2:?"Worker 模式需要指定 HEAD_IP: bash start_ray.sh worker <HEAD_IP>"}
     info "加入 Ray 集群 (Head: ${HEAD_IP}:${RAY_PORT})..."
-    ray start \
+    RAY_memory_monitor_refresh_ms=0 ray start \
         --address="${HEAD_IP}:${RAY_PORT}" \
         --num-gpus=${NUM_GPUS}
 
