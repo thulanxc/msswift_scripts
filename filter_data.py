@@ -13,8 +13,8 @@ import pyarrow.parquet as pq
 #   {"search", "visit", "PythonInterpreter", "google_scholar"}   -> 9956 条
 #   {"search", "visit", "PythonInterpreter", "google_scholar", "google_maps"} -> 10001 条 (全部)
 KEEP_TOOLS = {"search", "visit", "PythonInterpreter", "google_scholar"}
-DATA_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data"
-OUT_DIR = "/lanxiaochong/msswift_scripts/REDSearcher_SFT_10K/data_filtered"
+DATA_DIR = r"C:\Ring_base\RedSearcher\REDSearcher_SFT_10K\data"
+OUT_DIR = r"C:\Ring_base\RedSearcher\REDSearcher_SFT_10K\data_filtered_v1"
 # ================================================
 
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -38,6 +38,17 @@ TOOL_DEF_MARKER = '{"type": "function"'
 TOOL_NAME_RE = re.compile(r'"name"\s*:\s*"(\w+)"')
 JSON_DECODER = json.JSONDecoder()
 
+TOOL_DEF_OVERRIDES = {
+    "search": json.dumps(
+        {"type": "function", "function": {"name": "search", "description": "Perform a Google web search then returns a string of the top search results.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "The search query."}}, "required": ["query"]}}},
+        ensure_ascii=False,
+    ),
+    "google_scholar": json.dumps(
+        {"type": "function", "function": {"name": "google_scholar", "description": "Leverage Google Scholar to retrieve relevant information from academic publications.", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "The search query for Google Scholar."}}, "required": ["query"]}}},
+        ensure_ascii=False,
+    ),
+}
+
 
 def split_tool_chunks(tools_text):
     """Split <tools> block into (name, raw_chunk) pairs by marker positions."""
@@ -60,26 +71,32 @@ def split_tool_chunks(tools_text):
     return chunks
 
 
-def modify_search_chunk(chunk):
-    """Parse single-line search tool JSON and fix query type."""
-    obj = json.loads(chunk)
-    obj["function"]["parameters"]["properties"]["query"] = {
-        "type": "string",
-        "description": "The search query.",
-    }
-    return json.dumps(obj, ensure_ascii=False)
+def normalize_preamble(text):
+    """Align the original data preamble with the eval framework conventions."""
+    text = text.replace("\u2014", " ")          # em dash → space
+    text = text.replace(                        # split into two paragraphs
+        "academic inquiries. For each user request",
+        "academic inquiries.\n\nFor each user request",
+    )
+    text = text.replace("\u2019", "'")          # curly apostrophe → straight
+    text = text.replace(                        # wording + bold alignment
+        "you must wrap the entire final answer in **<answer></answer>** tags.",
+        "you must enclose the entire final answer within <answer></answer> tags.",
+    )
+    return text
 
 
 def rebuild_system_prompt(system_prompt, keep_tools):
     before, rest = system_prompt.split("<tools>\n", 1)
     tools_text, after = rest.split("\n</tools>", 1)
 
+    before = normalize_preamble(before)
+
     kept = []
     for name, chunk in split_tool_chunks(tools_text):
         if name not in keep_tools:
             continue
-        if name == "search":
-            chunk = modify_search_chunk(chunk)
+        chunk = TOOL_DEF_OVERRIDES.get(name, chunk)
         kept.append(chunk)
 
     return before + "<tools>\n" + "\n".join(kept) + "\n</tools>" + after
